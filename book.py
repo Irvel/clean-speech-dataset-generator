@@ -97,13 +97,14 @@ class Chapter:
         return self._duration
 
     @duration.setter
-    def duration(self, text_duration: str):
-        """Takes a string 00:00:00 and stores it as a timedelta object."""
-        self._duration = text_to_timedelta(text_duration)
-
-    @duration.setter
-    def duration(self, timedelta_duration: datetime.timedelta):
-        self._duration = timedelta_duration
+    def duration(self, duration):
+        """Takes duration either string 00:00:00 or a timedelta object."""
+        if type(duration) is str:
+            self._duration = _text_to_timedelta(duration)
+        elif type(duration) is datetime.timedelta:
+            self._duration = duration
+        else:
+            raise Exception("Wrong duration type provided")
 
     @property
     def is_downloaded(self):
@@ -225,13 +226,14 @@ class Book:
         return self._duration
 
     @duration.setter
-    def duration(self, text_duration: str):
-        """Takes a string 00:00:00 and stores it as a timedelta object."""
-        self._duration = text_to_timedelta(text_duration)
-
-    @duration.setter
-    def duration(self, timedelta_duration: datetime.timedelta):
-        self._duration = timedelta_duration
+    def duration(self, duration):
+        """Takes duration either string 00:00:00 or a timedelta object."""
+        if type(duration) is str:
+            self._duration = _text_to_timedelta(duration)
+        elif type(duration) is datetime.timedelta:
+            self._duration = duration
+        else:
+            raise Exception("Wrong duration type provided")
 
     @property
     def language_code(self):
@@ -266,7 +268,7 @@ class Book:
                 f"======================== Book Chapters ========================\n{self.chapters}\n\n\n")
 
 
-def text_to_timedelta(text):
+def _text_to_timedelta(text):
     """Parses a 00:00:00 string a into a timedelta object"""
     parts = text.strip().split(":")
     if len(parts) == 3:
