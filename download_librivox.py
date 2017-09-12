@@ -242,5 +242,6 @@ def fetch_all_books_chapters(books):
 if __name__ == '__main__':
     books = fetch_all_books(2, False)
     fetch_all_books_chapters(books)
-    [print(b) for b in books]
+    print(books[0])
+    #[print(b) for b in books]
 

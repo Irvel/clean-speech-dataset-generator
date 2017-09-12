@@ -199,11 +199,11 @@ class Chapter:
         else:
             self._download_path = None
 
-    def __str__(self):
-        return (f"download_url:{self.download_url}     \ntitle:{self.title}    number:{self.number}    " +
-                f"author:{self.author}    _language_code:{self.language_code}    _duration:{self._duration}    " +
-                f"size:{self.size}    reader:{self.reader}    book:{self.book}     " +
-                f"\n_download_path:{self._download_path}")
+    def __repr__(self):
+        return (f"Download URL:{self.download_url}     \nTitle:{self.title}    Number:{self.number}    " +
+                f"Language Code:{self.language_code}    Duration:{self._duration}    " +
+                f"Size:{self.size}    Reader:{self.reader_name}    Book:{self.book.title}     " +
+                f"Download Path:{self._download_path}\n")
 
 
 class Book:
@@ -259,10 +259,11 @@ class Book:
         return []
 
     # FIXME: Printing a list of books does not print this
-    def __str__(self):
-        return (f"Title: {self.title}\nAuthor: {self.author}\nBook URL: {self.url}\n" +
-                f"ZIP Download URL: {self.zip_download_url}\nSize: {self.size}\n" +
-                f"Chapters: {str(self.chapters)}\n\n")
+    def __repr__(self):
+        return (f"\n\nBook title: {self.title}\nBook author: {self.author}\nBook URL: {self.url}\n" +
+                f"Book ZIP Download URL: {self.zip_download_url}\nBook size: {self.size}\n" +
+                f"Book chapter count: {len(self.chapters)}\n\n" +
+                f"======================== Book Chapters ========================\n{self.chapters}\n\n\n")
 
 
 def text_to_timedelta(text):
