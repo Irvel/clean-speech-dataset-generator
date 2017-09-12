@@ -212,7 +212,7 @@ class Book:
     author: str = None
     url: str = None
     _language_code: str = None
-    _duration: int = None
+    _duration: datetime.timedelta = None
     zip_download_url: str = None
     date: str = None
     size: str = None
@@ -279,4 +279,4 @@ def text_to_timedelta(text):
             seconds = int(seconds)
             return datetime.timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
-    return datetime.timedelta()
+    return None
