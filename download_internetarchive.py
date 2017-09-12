@@ -16,11 +16,11 @@ DIRTY_SUBJECTS = ["music", "instrumental", "78rpm", "ambient", "noise",
                   "drone"]
 
 
-def isValidItem(item_metadata):
-    # We want audio files 
+def is_valid_item(item_metadata):
+    # We want audio files
 
 
-def searchItems(search_query, num_files=NUM_FILES):
+def search_tems(search_query, num_files=NUM_FILES):
     valid_items = []
     more_items_left = True
     search_results = search_items(query=search_query)
@@ -31,7 +31,7 @@ def searchItems(search_query, num_files=NUM_FILES):
     while more_items_left and len(valid_items) < num_files:
         for result in search_results:
             item = get_item(result["identifier"])
-            if isValidItem(item.item_metadata):
+            if is_valid_item(item.item_metadata):
                 valid_items.append(item)
 
     return valid_items
