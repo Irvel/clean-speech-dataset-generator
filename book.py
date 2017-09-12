@@ -35,7 +35,7 @@ class Chapter:
     _language_code: str = None
     _duration: datetime.timedelta = None
     size: str = None
-    reader: str = None
+    reader_name: str = None
     book = None
     _download_url: str = None
     _download_path: str = None
