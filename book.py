@@ -27,26 +27,45 @@ LANGUAGE_TO_CODE = {"english": "en", "spanish": "es", "brazilian portuguese": "p
 CODE_TO_LANGUAGE = {language: code for code, language in LANGUAGE_TO_CODE.items()}
 
 
-class Chapter:
-    """Stores a LibriVox Book Chapter's metadata."""
+class AudioBookFile:
     title: str = None
-    number: int = None
     author: str = None
     _language_code: str = None
-    _duration: datetime.timedelta = None
-    size: str = None
-    reader_name: str = None
-    book = None
     _download_url: str = None
-    _download_path: str = None
     _download_dir: str = None
     _download_filename: str = None
-
-    def __init__(self, book_reference):
-        self.book = book_reference
+    _download_path: str = None
+    _duration: datetime.timedelta = None
+    _size: int = None  # Filesize in bytes
 
     @property
-    def download_url(self):
+    def language_code(self) -> str:
+        return self._language_code
+
+    @language_code.setter
+    def language_code(self, new_code):
+        self._language_code = new_code
+
+    @property
+    def language(self) -> str:
+        """The language name in which the AudioFile is recorded in."""
+        if self.language_code in CODE_TO_LANGUAGE:
+            return CODE_TO_LANGUAGE[self.language_code]
+
+        return self.language_code
+
+    @language.setter
+    def language(self, text_language):
+        """Set the language code via a language name."""
+        language = text_language.strip().lower()
+        if language in LANGUAGE_TO_CODE:
+            self._language_code = LANGUAGE_TO_CODE[language]
+        else:
+            self._language_code = language[:2]
+
+    @property
+    def download_url(self) -> str:
+        """The direct url to download the AudioFile."""
         return self._download_url
 
     @download_url.setter
@@ -100,42 +119,129 @@ class Chapter:
     def duration(self, duration):
         """Takes duration either string 00:00:00 or a timedelta object."""
         if type(duration) is str:
-            self._duration = _text_to_timedelta(duration)
+            self._duration = self._text_to_timedelta(duration)
         elif type(duration) is datetime.timedelta:
             self._duration = duration
         else:
             raise Exception("Wrong duration type provided")
 
     @property
-    def is_downloaded(self):
-        """Return if the chapter has been downloaded."""
+    def size(self) -> int:
+        """The filesize in bytes of the AudioFile."""
+        return self._size
+
+    @property
+    def size_str(self) -> str:
+        """Get a human readable representation of the size in bytes."""
+        return fmt_size_bytes(self._size)
+
+
+    @size.setter
+    def size(self, new_size):
+        """Takes filesize in either text with units or bytes in an integer."""
+        if type(new_size) is str:
+            new_size = new_size.replace(" ", "").upper()
+            new_size = new_size.replace(",", ".")
+            new_size = new_size.replace("B", "").strip()
+            target_unit = None
+            multiplier = 1
+            is_bytes = False
+            try:
+                float(new_size)
+                target_unit = "B"
+                is_bytes = True
+            except Exception as e:
+                pass
+
+            if not is_bytes:
+                multiplier *= 1024
+                for unit in ["K", "M", "G", "T", "P", "E", "Z", "Y"]:
+                    if not target_unit and unit in new_size:
+                        target_unit = unit
+                        multiplier *= 1024
+                    # Reject double units
+                    elif target_unit and unit in new_size:
+                        target_unit = None
+                        break
+
+            if target_unit:
+                new_size = new_size.replace(target_unit, "").strip()
+                try:
+                    self._size = int(float(new_size) * multiplier)
+                except Exception as e:
+                    logger.error(f"Failed to set a size from {new_size}")
+                    logger.error(e)
+
+        elif type(new_size) is int:
+            self._size = new_size
+
+        else:
+            raise Exception("Wrong size type provided ({type(new_size)})")
+
+        if not self._size:
+            logger.warn(f"Failed to set a size from {new_size}")
+
+    @property
+    def is_downloaded(self) -> bool:
+        """Return if the AudioFile has been downloaded to the current download_path location."""
         if not self.download_path:
             return False
         return Path(self.download_path).exists()
 
-    @property
-    def language_code(self):
-        return self._language_code
+    def _ensure_dir_exists(self, directory):
+        """Create a directory for the target download."""
+        directory = directory.strip()
+        if not Path(directory).exists():
+            os.mkdir(directory)
 
-    @language_code.setter
-    def language_code(self, new_code):
-        self._language_code = new_code
+    def _move_self_to(self, new_dir=None, new_name=None):
+        """Move the downloaded AudioFile into a location."""
+        if self.is_downloaded:
+            if new_dir and not new_name:
+                shutil.move(self._download_path, os.path.join(new_dir, self.download_filename))
+            elif new_name and not new_dir:
+                shutil.move(self._download_path, os.path.join(self.download_dir, new_name))
+            elif new_name and new_dir:
+                shutil.move(self._download_path, os.path.join(new_dir, new_name))
 
-    @property
-    def language(self):
-        if self.language_code in CODE_TO_LANGUAGE:
-            return CODE_TO_LANGUAGE[self.language_code]
-
-        return self.language_code
-
-    @language.setter
-    def language(self, text_language):
-        """Convert a language name into it's language code."""
-        language = text_language.strip().lower()
-        if language in LANGUAGE_TO_CODE:
-            self._language_code = LANGUAGE_TO_CODE[language]
+    def _update_full_path(self):
+        """Keep a shorthand access to the full dir + filename representation."""
+        if self.download_dir and self.download_filename:
+            self._download_path = os.path.join(self.download_dir,
+                                               self.download_filename)
         else:
-            self._language_code = language[:2]
+            self._download_path = None
+
+    def _text_to_timedelta(self, text: str) -> datetime.timedelta:
+        """Parses a 00:00:00 string a into a timedelta object"""
+        parts = text.strip().split(":")
+        if len(parts) == 3:
+            hours = parts[0].strip()
+            minutes = parts[1].strip()
+            seconds = parts[2].strip()
+            if hours.isnumeric and minutes.isnumeric and seconds.isnumeric:
+                hours = int(hours)
+                minutes = int(minutes)
+                seconds = int(seconds)
+                return datetime.timedelta(hours=hours, minutes=minutes, seconds=seconds)
+
+        return None
+
+    def __repr__(self):
+        return (f"title: {self.title} author: {self.author} download URL: {self.download_url}  "
+                f"size: {self.size} duration:{self._duration} ")
+
+
+class Chapter(AudioBookFile):
+    """Stores a LibriVox Book Chapter's metadata."""
+    reader_name: str = None
+    book = None
+
+    def __init__(self, book_reference):
+        self.book = book_reference
+        # Copy our parent book download directory if set
+        if book_reference and book_reference.download_dir:
+            self.download_dir = book_reference.download_dir
 
     def download(self, overwrite=False):
         """Download the chapter from a URL to storage.
@@ -178,89 +284,33 @@ class Chapter:
 
         return False
 
-    def _ensure_dir_exists(self, directory):
-        """Create a directory for the target download."""
-        directory = directory.strip()
-        if not Path(self.download_path).exists():
-            os.mkdir(directory)
-
-    def _move_self_to(self, new_dir=None, new_name=None):
-        if self.is_downloaded:
-            if new_dir and not new_name:
-                shutil.move(self._download_path, os.path.join(new_dir, self.download_filename))
-            elif new_name and not new_dir:
-                shutil.move(self._download_path, os.path.join(self.download_dir, new_name))
-            elif new_name and new_dir:
-                shutil.move(self._download_path, os.path.join(new_dir, new_name))
-
-    def _update_full_path(self):
-        if self.download_dir and self.download_filename:
-            self._download_path = os.path.join(self.download_dir,
-                                               self.download_filename)
-        else:
-            self._download_path = None
-
     def __repr__(self):
-        return (f"Download URL:{self.download_url}     \nTitle:{self.title}    Number:{self.number}    " +
-                f"Language Code:{self.language_code}    Duration:{self._duration}    " +
-                f"Size:{self.size}    Reader:{self.reader_name}    Book:{self.book.title}     " +
-                f"Download Path:{self._download_path}\n")
+        rep = super(Chapter, self).__repr__()
+        return (rep + f"Chap#:{self.number}  language_code:{self.language_code}  "
+                f"reader:{self.reader_name} book:{self.book.title}  ")
 
 
-class Book:
+class Book(AudioBookFile):
     """Stores a LibriVox Book's metadata."""
-    title: str = None
     author: str = None
+    author_url: str = None
     url: str = None
-    _language_code: str = None
-    _duration: datetime.timedelta = None
-    zip_download_url: str = None
     date: str = None
-    size: str = None
     proof_listener: str = None
     proof_listener_url: str = None
     chapters: List[Chapter] = None
 
-    @property
-    def duration(self):
-        return self._duration
-
-    @duration.setter
-    def duration(self, duration):
-        """Takes duration either string 00:00:00 or a timedelta object."""
-        if type(duration) is str:
-            self._duration = _text_to_timedelta(duration)
-        elif type(duration) is datetime.timedelta:
-            self._duration = duration
-        else:
-            raise Exception("Wrong duration type provided")
-
-    @property
-    def language_code(self):
-        return self._language_code
-
-    @property
-    def language(self):
-        if self.language_code in CODE_TO_LANGUAGE:
-            return CODE_TO_LANGUAGE[self.language_code]
-
-        return self.language_code
-
-    @language.setter
-    def language(self, text_language):
-        """Convert a language name into it's language code."""
-        language = text_language.strip().lower()
-        if language in LANGUAGE_TO_CODE:
-            self._language_code = LANGUAGE_TO_CODE[language]
-        else:
-            self._language_code = language[:2]
-
-    def get_random_chapters(self, amount=1):
+    def get_random_chapters(self, amount=1) -> [Chapter]:
         if self.chapters:
             return random.sample(self.chapters, amount)
         return []
 
-    # FIXME: Printing a list of books does not print this
+    def download(self):
+        if self.chapters:
+            for chapter in self.chapters:
+                if chapter:
+                    chapter.download()
+
     def __repr__(self):
         return (f"\n\nBook title: {self.title}\nBook author: {self.author}\nBook URL: {self.url}\n" +
                 f"Book ZIP Download URL: {self.zip_download_url}\nBook size: {self.size}\n" +
@@ -268,17 +318,11 @@ class Book:
                 f"======================== Book Chapters ========================\n{self.chapters}\n\n\n")
 
 
-def _text_to_timedelta(text):
-    """Parses a 00:00:00 string a into a timedelta object"""
-    parts = text.strip().split(":")
-    if len(parts) == 3:
-        hours = parts[0].strip()
-        minutes = parts[1].strip()
-        seconds = parts[2].strip()
-        if hours.isnumeric and minutes.isnumeric and seconds.isnumeric:
-            hours = int(hours)
-            minutes = int(minutes)
-            seconds = int(seconds)
-            return datetime.timedelta(hours=hours, minutes=minutes, seconds=seconds)
+def fmt_size_bytes(num_bytes: int) -> str:
+    num_bytes = float(num_bytes)
+    for unit in ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB"]:
+        if abs(num_bytes) < 1024.0:
+            return "%3.1f%s" % (num_bytes, unit)
+        num_bytes = num_bytes / 1024.0
 
-    return None
+    return "%.1f%s" % (num_bytes, "YB")
