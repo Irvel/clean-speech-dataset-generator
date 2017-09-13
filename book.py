@@ -277,7 +277,11 @@ class Chapter(AudioBookFile):
             session = download_session.make_session()
             try:
                 download_request = session.get(self.download_url, stream=True, timeout=10)
-                if download_request.stats_code != 200:
+                if download_request.status_code == 200:
+                    # Maybe we should assert 'Content-Type': 'audio/mpeg' here?
+                    if not self.size:
+                        self.size = int(download_request.headers["Content-Length"])
+
                     with open(self.download_path, "wb") as local_file:
                         logger.info(f"Downloading {self.download_filename} to \"{self.download_dir}\"...")
                         shutil.copyfileobj(download_request.raw, local_file)
