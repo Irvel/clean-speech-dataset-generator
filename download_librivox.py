@@ -292,6 +292,10 @@ def fetch_all_books_chapters(books):
         booky.chapters = chapters
 
 
+def download_book(target_book):
+    target_book.download()
+
+
 if __name__ == '__main__':
     logger.setLevel(level=logging.DEBUG)
     books = fetch_all_books(start_page=1, end_page=40)
@@ -303,8 +307,9 @@ if __name__ == '__main__':
 
     fetch_all_books_chapters(books)
 
-    for booky in books:
-        booky.download()
+    with Pool(NUM_PROCESSES) as pool:
+        _ = pool.map(download_book, books)
+
 
     # print(books[0] or "")
     # [print(b) for b in books]

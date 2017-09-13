@@ -238,6 +238,10 @@ class AudioBookFile:
 
         return None
 
+    def delete_file(self):
+        if self.is_downloaded():
+            os.remove(self.download_path)
+
     def __repr__(self):
         return (f"title: {self.title} author: {self.author} download URL: {self.download_url}  "
                 f"size: {self.size} duration:{self._duration} ")
@@ -276,7 +280,7 @@ class Chapter(AudioBookFile):
         if not self.is_downloaded or overwrite:
             session = download_session.make_session()
             try:
-                download_request = session.get(self.download_url, stream=True, timeout=10)
+                download_request = session.get(self.download_url, stream=True, timeout=30)
                 if download_request.status_code == 200:
                     # Maybe we should assert 'Content-Type': 'audio/mpeg' here?
                     if not self.size:
@@ -289,6 +293,7 @@ class Chapter(AudioBookFile):
             except download_session.get_download_exceptions() as e:
                 logger.error(f"Failed to download \"{self.download_filename}\" from \"{self.download_url}\"")
                 logger.error(e)
+                self.delete_file()
 
             else:
                 if Path(self.download_path).exists():
