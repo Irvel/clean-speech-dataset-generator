@@ -96,15 +96,38 @@ def fetch_titles_from_page(page_number, get_books=True) -> ([Book], bool):
         scraper = BeautifulSoup(html_results, 'html.parser')
         catalog_results = scraper.find_all("li", class_="catalog-result")
 
-        for catalog_result in catalog_results:
-            book = Book()
-            result_data = catalog_result.find_next("div", class_="result-data")
-            book.title = result_data.a.text
-            book.url = result_data.a.attrs["href"]
-            book.author = result_data.find_all(class_="book-author")[0].a.text
-            book.zip_download_url = catalog_result.find_next(class_="download-btn").a.attrs["href"]
-            book.size = catalog_result.find_next(class_="download-btn").span.text.strip()
-            books.append(book)
+        if catalog_results:
+            for catalog_result in catalog_results:
+                book = Book()
+                result_data = catalog_result.find("div", class_="result-data")
+                book.title = result_data.a.text.strip()
+                # Remove enclosing " or ' if any
+                if book.title[0] is "\"" or book.title[0] is "'":
+                    book.title = book.title[1:]
+
+                if book.title[-1] is "\"" or book.title[-1] is "'":
+                    book.title = book.title[:-1]
+
+                book.url = result_data.a.attrs["href"]
+                book_author = result_data.find(class_="book-author")
+                if book_author and book_author.text:
+                    book.author = book_author.text.strip()
+                else:
+                    logger.error(f"Failed to scrape the author for book \"{book.url}\" "
+                                 f"in catalog page #{page_number}")
+                if book_author and book_author.a and book_author.a.attrs["href"]:
+                    book.author_url = book_author.a.attrs["href"]
+                else:
+                    # Books with various authors don't have an author url so this might be fine
+                    logger.warn(f"Failed to scrape the author url for book \"{book.url}\" "
+                                 f"in catalog page #{page_number}")
+                book.download_url = catalog_result.find(class_="download-btn").a.attrs["href"]
+                book.size = catalog_result.find(class_="download-btn").span.text.strip()
+                books.append(book)
+            logger.debug(f"Fetched metadata for {len(books)} books from page #{page_number}")
+
+        else:
+            logger.warn(f"Failed to fetch books from the catalog page #{page_number}")
 
     else:
         logger.debug(f"Skipping scraping page #{page_number} for book metadata...")
@@ -146,11 +169,11 @@ def fetch_all_books(start_page=1, end_page=MAX_KNOWN_PAGE, need_update_page=Fals
     logger.info(f"Fetching LibriVox's book catalog from pages #{start_page} till #{end_page}...")
     fetched_titles = []
     with Pool(NUM_PROCESSES) as pool:
-        fetched_titles = pool.map(fetch_titles_from_page, [n for n in range(max_page)])
+        fetched_titles = pool.map(fetch_titles_from_page, [n for n in range(start_page, end_page)])
 
     all_books = []
     for result in fetched_titles:
-        if result[1]:
+        if result and result[1]:
             all_books.extend(result[0])
 
     return all_books
@@ -165,17 +188,13 @@ def _fetch_missing_book_metadata(book, scraper):
 
     book.duration = additional_book_info[0].text
 
-    # Get missing book metadata
-    scraper = BeautifulSoup(book_page.text, 'html.parser')
-    juicy_info = scraper.find("dl", class_="product-details clearfix").find_all("dd")
-    book.duration = juicy_info[0].text
     # If the book size was not set before for some reason
     if not book.size:
-        book.size = juicy_info[1].text.strip()
-    book.date = juicy_info[2].text
-    if juicy_info[6].a and juicy_info[6].a.text.replace("\xa0", "").strip():
-        book.proof_listener = juicy_info[6].a.text.replace("\xa0", "").strip()
-        book.proof_listener_url = juicy_info[6].a.attrs["href"]
+        book.size = additional_book_info[1].text.strip()
+    book.date = additional_book_info[2].text
+    if additional_book_info[6].a and additional_book_info[6].a.text.replace("\xa0", "").strip():
+        book.proof_listener = additional_book_info[6].a.text.replace("\xa0", "").strip()
+        book.proof_listener_url = additional_book_info[6].a.attrs["href"]
 
     book.description = scraper.find("div", class_="page book-page").find("div", class_="description").text
     lang_group_gen = scraper.find_all("p", class_="book-page-genre")
@@ -187,11 +206,21 @@ def _fetch_missing_book_metadata(book, scraper):
             if len(lang_group_gen) > 2:
                 book.group = lang_group_gen[2].text.replace("Group:", "").strip()
     else:
-        # TODO: Replace this with proper colored nice logging
-        print("\n\n\n\n\n\n")
-        print("COULDNT FIND lang_group_gen")
-        print(lang_group_gen)
-        print("\n\n\n\n\n\n")
+        # This info is not really crucial
+        logger.error(f"Scraping failed to find the \"genre, language, group\" details section of \"{book.url}\"")
+
+
+def fetch_all_chapters(book) -> [Chapter]:
+    """Fetch metadata for every chapter in the book."""
+    logger.debug(f"Downloading info for chapters in book: \"{book.title[:70]}\"...")
+    session = download_session.make_session()
+    book_page = session.get(book.url, headers=_get_scrape_headers(), timeout=10)
+    if book_page.status_code != 200:
+        logger.warn(f"Failed to download chapters information for book \"{book.url}\"")
+        return []
+
+    scraper = BeautifulSoup(book_page.text, "html.parser")
+    _fetch_missing_book_metadata(book, scraper)
 
     # Get the chapters information
     chapters = []
@@ -205,7 +234,8 @@ def _fetch_missing_book_metadata(book, scraper):
         logger.error(f"Scraping failed to find the chapters rows in the chapters table for book \"{book.url}\"")
         return chapters
 
-    if len(chapter_rows[0].find_all("td")) == 7:
+    num_row_elements = len(chapter_rows[0].find_all("td"))
+    if num_row_elements == 7:
         for row in chapter_rows:
             chapter = Chapter(book)
             chapter.title = row.find("a", class_="chapter-name").text
@@ -228,7 +258,7 @@ def _fetch_missing_book_metadata(book, scraper):
             chapter.language_code = row_elements[6].text.strip()
             chapters.append(chapter)
 
-    elif len(chapter_rows[0].find_all("td")) == 4:
+    elif num_row_elements == 4:
         for row in chapter_rows:
             chapter = Chapter(book)
             chapter.title = row.find("a", class_="chapter-name").text
