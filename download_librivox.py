@@ -49,9 +49,11 @@ USER_AGENTS = ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/2010
 TITLES_URL = "https://librivox.org/search/get_results?primary_key=0&search_category=title&search_order=alpha&project_type=either"
 
 
-# Get a list languages an the amount of Audiobooks in each language
-def get_languages():
-    pass
+def _get_scrape_headers():
+    random_ua = random.sample(USER_AGENTS, 1)[0]
+    headers = MAGIC_HEADERS
+    headers["User-Agent"] = random_ua
+    return headers
 
 
 def fetch_titles_from_page(page_number, get_books=True) -> ([Book], bool):
@@ -76,7 +78,7 @@ def fetch_titles_from_page(page_number, get_books=True) -> ([Book], bool):
 
     logger.debug(f"Fetching catalog page #{page_number}... ")
     url = TITLES_URL + f"&search_page={page_number}"
-    result = requests.get(url, headers=MAGIC_HEADERS)
+    result = requests.get(url, headers=_get_scrape_headers())
 
     if result.status_code != 200:
         return [], False
