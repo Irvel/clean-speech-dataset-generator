@@ -7,12 +7,17 @@ from bs4 import BeautifulSoup
 from multiprocessing import Pool
 
 import json
-import requests
+import logging
 import random
+import requests
 
 from book import Book
 from book import Chapter
+from book import fmt_size_bytes
 import download_session
+import logging_setup
+
+logger = logging_setup.setup_logger("LibriVox Scraper")
 
 
 NUM_PROCESSES = 5  # Number of processes to use for downloading
@@ -63,7 +68,10 @@ def fetch_titles_from_page(page_number, get_books=True):
         True if successful, False otherwise.
 
     """
-    print(f"Downloading page {page_number}... ", end="")
+    assert type(page_number) is int
+    assert type(get_books) is bool
+
+    logger.debug(f"Fetching catalog page #{page_number}... ")
     url = TITLES_URL + f"&search_page={page_number}"
     result = requests.get(url, headers=MAGIC_HEADERS)
 
@@ -93,9 +101,9 @@ def fetch_titles_from_page(page_number, get_books=True):
             book.size = catalog_result.find_next(class_="download-btn").span.text.strip()
             books.append(book)
 
-        print(f"{True}, Fetched metadata for {len(books)} books.")
+    else:
+        logger.debug(f"Skipping scraping page #{page_number} for book metadata...")
 
-    print()
     return books, True
 
 
@@ -103,10 +111,13 @@ def fetch_all_books(max_page=MAX_KNOWN_PAGE, need_update_page=True):
     """Fetches metadata for all books from the titles catalog."""
 
     while need_update_page:
-        _, need_update_page = fetch_titles_from_page(max_page, False)
+        logger.debug(f"Checking if the # of LibriVox catalog pages is larger than {end_page}...")
+        _, need_update_page = fetch_titles_from_page(end_page, False)
         if need_update_page:
-            max_page += 1
+            end_page += 1
+            logger.debug(f"Found new catalog page #{end_page}")
 
+    logger.info(f"Fetching LibriVox's book catalog from pages #{start_page} till #{end_page}...")
     fetched_titles = []
     with Pool(NUM_PROCESSES) as pool:
         fetched_titles = pool.map(fetch_titles_from_page, [n for n in range(max_page)])
@@ -163,20 +174,12 @@ def fetch_all_chapters(book):
     chapters = []
     chapters_table = scraper.find("table", class_="chapter-download")
     if not chapters_table:
-        # TODO: Replace this with proper colored nice logging
-        print("\n\n\n\n\n\n")
-        print("COULDNT FIND table class_=chapter-download")
-        print(scraper)
-        print("\n\n\n\n\n\n")
+        logger.error(f"Scraping failed to find the chapters table for book \"{book.url}\"")
         return chapters
 
     chapter_rows = chapters_table.find_all("tr")[1:]  # The first row is the table headers
     if not chapter_rows:
-        # TODO: Replace this with proper colored nice logging
-        print("\n\n\n\n\n\n")
-        print("COULDNT FIND tr[1:] IN chapters_table")
-        print(chapters_table)
-        print("\n\n\n\n\n\n")
+        logger.error(f"Scraping failed to find the chapters rows in the chapters table for book \"{book.url}\"")
         return chapters
 
     if len(chapter_rows[0].find_all("td")) == 7:
@@ -220,13 +223,10 @@ def fetch_all_chapters(book):
             chapter.author = book.author
             chapters.append(chapter)
     else:
-        # TODO: Replace this with proper colored nice logging
-        print("\n\n\n\n\n\n")
-        print("BAD LENGTH: len: ", end=" ")
-        print(len(chapter_rows[0]))
-        print(chapter_rows)
-        print("\n\n\n\n\n\n")
+        logger.error(f"Found an unknown number ({num_row_elements}) of chapter_rows in "
+                     f"the book page of \"{book.url}\"")
 
+    logger.debug(f"Finished downloading info for {len(chapters)} chapters in book \"{book.title[:50]}\"")
     return chapters
 
 
@@ -240,8 +240,18 @@ def fetch_all_books_chapters(books):
 
 
 if __name__ == '__main__':
-    books = fetch_all_books(2, False)
-    fetch_all_books_chapters(books)
-    print(books[0])
-    #[print(b) for b in books]
+    logger.setLevel(level=logging.DEBUG)
+    books = fetch_all_books(start_page=1, end_page=40)
+    total_storage = 0
+    for booky in books:
+        total_storage += booky.size or 0
+        booky.download_dir = "/Volumes/yes/clean_speech_files/"
+    print(f"\nTOTAL BOOKS SIZE WOULD BE APPROX: {fmt_size_bytes(total_storage)}\n")
 
+    fetch_all_books_chapters(books)
+
+    for booky in books:
+        booky.download()
+
+    # print(books[0] or "")
+    # [print(b) for b in books]

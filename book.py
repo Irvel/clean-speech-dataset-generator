@@ -7,6 +7,9 @@ import random
 import shutil
 
 import download_session
+import logging_setup
+
+logger = logging_setup.setup_logger("Book Module")
 
 
 LANGUAGE_TO_CODE = {"english": "en", "spanish": "es", "brazilian portuguese": "pt", "portuguese": "pt",
@@ -268,18 +271,18 @@ class Chapter(AudioBookFile):
                 download_request = session.get(self.download_url, stream=True, timeout=10)
                 if download_request.stats_code != 200:
                     with open(self.download_path, "wb") as local_file:
-                        # TODO: Replace this with proper logging
-                        print(f"Downloading {self.download_filename} to {self.download_dir} ...")
+                        logger.info(f"Downloading {self.download_filename} to \"{self.download_dir}\"...")
                         shutil.copyfileobj(download_request.raw, local_file)
 
             except download_session.get_download_exceptions() as e:
-                print(e)
+                logger.error(f"Failed to download \"{self.download_filename}\" from \"{self.download_url}\"")
+                logger.error(e)
 
             else:
                 if Path(self.download_path).exists():
                     return True
         else:
-            print("File exists, skipping re-downloading...")
+            logger.info(f"File \"{self.download_filename}\" exists, skipping re-downloading...")
             return True
 
         return False
@@ -313,7 +316,7 @@ class Book(AudioBookFile):
 
     def __repr__(self):
         return (f"\n\nBook title: {self.title}\nBook author: {self.author}\nBook URL: {self.url}\n" +
-                f"Book ZIP Download URL: {self.zip_download_url}\nBook size: {self.size}\n" +
+                f"Book download URL: {self.download_url}\nBook size: {self.size}\n" +
                 f"Book chapter count: {len(self.chapters)}\n\n" +
                 f"======================== Book Chapters ========================\n{self.chapters}\n\n\n")
 
