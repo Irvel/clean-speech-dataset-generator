@@ -23,7 +23,7 @@ import logging_setup
 logger = logging_setup.setup_logger("LibriVox Scraper")
 
 
-NUM_PROCESSES = 5  # Number of processes to use for downloading
+NUM_PROCESSES = 6  # Number of processes to use for downloading
 MAX_KNOWN_PAGE = 445  # The last know page from the book catalog
 
 MAGIC_HEADERS = {"Referer": "https://librivox.org/search",

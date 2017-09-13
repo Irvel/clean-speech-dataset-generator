@@ -4,7 +4,7 @@ from urllib3.exceptions import ReadTimeoutError
 
 import requests
 
-MAX_RETRIES = 8
+MAX_RETRIES = 17
 BACKOFF_FACTOR = 0.2  # Sleep for [0.0s, 0.4s, 0.6s, ...] between retries
 POOL_CONNECTIONS = 20
 POOL_MAX_SIZE = 50
