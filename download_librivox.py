@@ -1,10 +1,13 @@
 """
-A simple librivox scraper
+A simple LibriVox scraper
 
-Fetches every available title
+Fetches information of every available audiobook in LibriVox's repository by scraping librivox.org
+with BeautifulSoup. It uses the "Browsing by Title" book catalog in librivox.org as the source for
+book metadata. It then stores the information of each book in book.Book objects.
 """
 from bs4 import BeautifulSoup
 from multiprocessing import Pool
+
 
 import json
 import logging
@@ -42,10 +45,7 @@ USER_AGENTS = ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/2010
                ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13) AppleWebKit/604.1.38 (KHTML, like Gecko) "
                 "Version/11.0 Safari/604.1.38")]
 
-# Used to get the list of languages
-LANGUAGES_URL = "https://librivox.org/search/get_results?primary_key=0&search_category=language&sub_category=&search_page=1&search_order=alpha&project_type=either"
-
-# Fetch every title
+# The "Browsing by Title" book catalog in page librivox.org
 TITLES_URL = "https://librivox.org/search/get_results?primary_key=0&search_category=title&search_order=alpha&project_type=either"
 
 
@@ -54,18 +54,21 @@ def get_languages():
     pass
 
 
-def fetch_titles_from_page(page_number, get_books=True):
+def fetch_titles_from_page(page_number, get_books=True) -> ([Book], bool):
     """Fetch book details from a specific catalog page.
 
-    Instead downloading the entire book as .zip, we want to download many individual chapters from different books
-    to add more variety to our training set.
+    Instead downloading the entire book as .zip, we want to download many individual chapters
+    from different books to add more variety to our training set.
+
+    In case of not being able to download anything, this function should return an empty list and
+    False.
 
     Args:
-        page_number (int): The page number book catalog to fetch.
-        get_books (str): Whether to actually scrape the books info from the catalog.
+        page_number (int): The page number book catalog to fetch
+        get_books (bool): Whether to actually scrape the books info from the catalog
 
     Returns:
-        True if successful, False otherwise.
+        ([Book], bool): A list of books and True if successful
 
     """
     assert type(page_number) is int
@@ -107,8 +110,29 @@ def fetch_titles_from_page(page_number, get_books=True):
     return books, True
 
 
-def fetch_all_books(max_page=MAX_KNOWN_PAGE, need_update_page=True):
-    """Fetches metadata for all books from the titles catalog."""
+def fetch_all_books(start_page=1, end_page=MAX_KNOWN_PAGE, need_update_page=False) -> [Book]:
+    """Fetches metadata for all books from LibriVox's titles catalog.
+
+    Scrapes {TITLES_URL} pages from start_page till end_page to obtain information of the available
+    books. It uses a process per page up to {NUM_PROCESSES} processes because the get request to
+    each page can takea while to complete.
+
+    Examples:
+        - fetch_all_books(start_page=1, end_page=2, need_update_page=False) will download every book
+        in pages 1 and 2.
+
+    Args:
+        start_page (int): The starting page in LibriVox's titles catalog to fetch (inclusive)
+        end_page (int): The ending page in LibriVox's titles catalog to fetch (inclusive)
+        need_update_page (bool): Whether to check if there exist more pages after end_page
+
+    Returns:
+        [Book]: The books that it was able to scrape from the provided range
+    """
+    assert type(start_page) is int
+    assert type(end_page) is int
+    assert start_page < end_page
+    assert type(need_update_page) is bool
 
     while need_update_page:
         logger.debug(f"Checking if the # of LibriVox catalog pages is larger than {end_page}...")
@@ -130,17 +154,14 @@ def fetch_all_books(max_page=MAX_KNOWN_PAGE, need_update_page=True):
     return all_books
 
 
-def fetch_all_chapters(book):
-    # FIXME: This function turned out to be way too large, try to split it
-    print(f"Downloading chapters for book: {book.title}   at   {book.url}")
-    session = download_session.make_session()
-    book_page = session.get(book.url, headers=MAGIC_HEADERS, timeout=10)
-    if book_page.status_code != 200:
-        # TODO: Replace this with proper colored nice logging
-        print("\n\n\n\n\n\n")
-        print("COULD NOT MAKE REQUEST")
-        print("\n\n\n\n\n\n")
-        return []
+def _fetch_missing_book_metadata(book, scraper):
+    """Get additional book information not available in the book catalog pages."""
+    additional_book_info = scraper.find("dl", class_="product-details clearfix").find_all("dd")
+    # We could get the book title like this but it doesn't seem any different from the fetched one
+    # in the catalog pages
+    # book_title = scraper.find("h1", class_="").text.strip()
+
+    book.duration = additional_book_info[0].text
 
     # Get missing book metadata
     scraper = BeautifulSoup(book_page.text, 'html.parser')
@@ -235,8 +256,8 @@ def fetch_all_books_chapters(books):
     with Pool(NUM_PROCESSES) as pool:
         lists_of_chapters = pool.map(fetch_all_chapters, books)
 
-    for book, chapters in zip(books, lists_of_chapters):
-        book.chapters = chapters
+    for booky, chapters in zip(books, lists_of_chapters):
+        booky.chapters = chapters
 
 
 if __name__ == '__main__':

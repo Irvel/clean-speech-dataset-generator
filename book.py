@@ -73,19 +73,20 @@ class AudioBookFile:
 
     @download_url.setter
     def download_url(self, new_url):
-        """Updates the URL and filename of the Chapter."""
+        """Updates the URL and filename of the AudioBookFile."""
         self._download_url = new_url
 
         if not self.download_filename:
             self.download_filename = new_url.split("/")[-1]
 
     @property
-    def download_dir(self):
+    def download_dir(self) -> str:
+        """The download directory to which the AudioFile will download itself in."""
         return self._download_dir
 
     @download_dir.setter
     def download_dir(self, new_dir):
-        """Updates the download dir and path of the chapter in storage."""
+        """Updates the download dir and path of the AudioBookFile in storage."""
         new_dir = new_dir.strip()
         self._ensure_dir_exists(new_dir)
 
@@ -96,12 +97,17 @@ class AudioBookFile:
         self._update_full_path()
 
     @property
-    def download_filename(self):
+    def download_filename(self) -> str:
+        """The filename of the AudioFile that it will download itself to.
+
+        If the filename is not explicitly set, the filename of the file on the server reachable
+        via the self.download_url is used.
+        """
         return self._download_filename
 
     @download_filename.setter
     def download_filename(self, new_name):
-        """Updates the download filename and path of the chapter in storage."""
+        """Updates the download filename and path of the AudioBookFile in storage."""
         new_name = new_name.strip()
 
         if self._download_path and self.is_downloaded:
@@ -111,11 +117,13 @@ class AudioBookFile:
         self._update_full_path()
 
     @property
-    def download_path(self):
+    def download_path(self) -> str:
+        """Full download path that reflects the combination of download_dir and download_filename."""
         return self._download_path
 
     @property
-    def duration(self):
+    def duration(self) -> datetime.timedelta:
+        """The duration of the AudioFile recording in a timedelta object."""
         return self._duration
 
     @duration.setter
