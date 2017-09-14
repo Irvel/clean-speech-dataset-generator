@@ -17,11 +17,9 @@ def setup_logger(name, log_filename=None, log_level=logging.DEBUG):
     coloredlogs.install(fmt=FORMAT, datefmt="%H:%M:%S",
                         level=LEVEL_TO_STRING[log_level], logger=logger)
 
-
-
     if log_filename:
+        formatter = logging.Formatter(FORMAT)
         handler = logging.FileHandler(log_filename)
-        formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
