@@ -152,6 +152,8 @@ class AudioBookFile:
         """Takes filesize in either text with units or bytes in an integer."""
         if type(new_size) is str:
             new_size = new_size.replace(" ", "").upper()
+            new_size = new_size.replace(")", "")
+            new_size = new_size.replace("(", "")
             new_size = new_size.replace(",", ".")
             new_size = new_size.replace("B", "").strip()
             target_unit = None

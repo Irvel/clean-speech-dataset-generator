@@ -241,22 +241,30 @@ def fetch_all_chapters(book) -> [Chapter]:
             chapter.title = row.find("a", class_="chapter-name").text
             chapter.download_url = row.find("a", class_="chapter-name").attrs["href"]
             row_elements = row.find_all("td")
+            if not row_elements:
+                logger.error(f"Scraping failed for chapter metadata of book \"{book.url}\"")
+                break
+
             chapter.number = int(row_elements[0].text.replace(row_elements[0].a.text, "").strip())
-            chapter.author = row_elements[2].text.strip()
-            if row_elements[2].a:
-                chapter.author_url = row_elements[2].a.attrs["href"]
+            if len(row_elements) > 2:
+                chapter.author = row_elements[2].text.strip()
+                if row_elements[2].a:
+                    chapter.author_url = row_elements[2].a.attrs["href"]
 
-            chapter.source_text = row_elements[3].text.strip()
-            if row_elements[3].a:
-                chapter.source_text_url = row_elements[3].a.attrs["href"]
+                chapter.source_text = row_elements[3].text.strip()
+                if row_elements[3].a:
+                    chapter.source_text_url = row_elements[3].a.attrs["href"]
 
-            chapter.reader_name = row_elements[4].text.strip()
-            if row_elements[4].a:
-                chapter.reader_url = row_elements[4].a.attrs["href"]
+                chapter.reader_name = row_elements[4].text.strip()
+                if row_elements[4].a:
+                    chapter.reader_url = row_elements[4].a.attrs["href"]
 
-            chapter.duration = row_elements[5].text.strip()
-            chapter.language_code = row_elements[6].text.strip()
-            chapters.append(chapter)
+                chapter.duration = row_elements[5].text.strip()
+                chapter.language_code = row_elements[6].text.strip()
+                chapters.append(chapter)
+
+            else:
+                logger.error(f"Scraping failed for chapter metadata of book \"{book.url}\"")
 
     elif num_row_elements == 4:
         for row in chapter_rows:
@@ -264,17 +272,25 @@ def fetch_all_chapters(book) -> [Chapter]:
             chapter.title = row.find("a", class_="chapter-name").text
             chapter.download_url = row.find("a", class_="chapter-name").attrs["href"]
             row_elements = row.find_all("td")
+            if not row_elements:
+                logger.error(f"Scraping failed for chapter metadata of book \"{book.url}\"")
+                break
+
             chapter.number = int(row_elements[0].text.replace(row_elements[0].a.text, "").strip())
 
-            chapter.reader_name = row_elements[2].text.strip()
-            # Chapters read by a group of people don't have a link to the reader's profile
-            if row_elements[2].a:
-                chapter.reader_url = row_elements[2].a.attrs["href"]
+            if len(row_elements) > 2:
+                chapter.reader_name = row_elements[2].text.strip()
+                # Chapters read by a group of people don't have a link to the reader's profile
+                if row_elements[2].a:
+                    chapter.reader_url = row_elements[2].a.attrs["href"]
 
-            chapter.duration = row_elements[3].text.strip()
-            chapter.language = book.language
-            chapter.author = book.author
-            chapters.append(chapter)
+                chapter.duration = row_elements[3].text.strip()
+                chapter.language = book.language
+                chapter.author = book.author
+                chapters.append(chapter)
+
+            else:
+                logger.error(f"Scraping failed for chapter metadata of book \"{book.url}\"")
     else:
         logger.error(f"Found an unknown number ({num_row_elements}) of chapter_rows in "
                      f"the book page of \"{book.url}\"")
