@@ -26,5 +26,14 @@ def make_session():
     return session
 
 
+def get_http_parameters():
+    retry_policy = Retry(total=MAX_RETRIES,
+                         backoff_factor=BACKOFF_FACTOR,
+                         status_forcelist=[500, 502, 503, 504])  # Only retry on these status_codes
+
+    return {"pool_connections": POOL_CONNECTIONS, "pool_maxsize": POOL_MAX_SIZE,
+            "max_retries": retry_policy}
+
+
 def get_download_exceptions():
     return ConnectionError, ReadTimeoutError

@@ -5,12 +5,13 @@ import os
 import download_internetarchive
 import download_librivox
 import logging_setup
+import pre_process_files
 
 logger = logging_setup.setup_logger("Dataset Generator")
 
 CLEAN_DIRTY_SPLIT = .5  # What % of our data will be clean speech speech
-NUM_PROCESSES = 7
-NUM_LANGUAGES = 20
+NUM_PROCESSES = 1
+NUM_LANGUAGES = 30
 CHAPTERS_PER_LANGUAGE = 15
 
 
@@ -19,7 +20,7 @@ def download_clean_speech_files(download_dir):
     if not os.path.exists(download_dir):
         os.mkdir(download_dir)
 
-    books = download_librivox.fetch_all_books(start_page=90, end_page=300)
+    books = download_librivox.fetch_all_books(start_page=200, end_page=400)
     logger.info(f"Downloaded information for {len(books)} books from LibriVox")
     for book in books:
         book.download_dir = download_dir
@@ -52,8 +53,14 @@ def download_clean_speech_files(download_dir):
                 readers.add(chapter.reader_name)
                 chapters_to_download.append(chapter)
 
+    """
+    # Commenting out multiprocess code for now as it crashes in Python 3.6.2 with the error:
+    # "__NSPlaceholderDate initialize] may have been in progress in another thread when fork() was called."
     with Pool(NUM_PROCESSES) as pool:
         pool.map(download_librivox.download_chapter, chapters_to_download)
+    """
+    for chapter in chapters_to_download:
+        chapter.download()
 
 
 def download_noise_files(download_dir):
@@ -61,14 +68,15 @@ def download_noise_files(download_dir):
     if not os.path.exists(download_dir):
         os.mkdir(download_dir)
 
-    download_internetarchive.download_n_files(download_dir, 100)
+    download_internetarchive.download_n_files(download_dir, 300)
 
 
 if __name__ == '__main__':
-    clean_download_dir = "/Volumes/yes/clean_speech_dataset/clean_files/"
-    dirty_download_dir = "/Volumes/yes/clean_speech_dataset/dirty_files/"
+    clean_download_dir = "/Volumes/yes/clean_speech_dataset_2/clean_files/"
+    dirty_download_dir = "/Volumes/yes/clean_speech_dataset_2/dirty_files/"
     # TODO: Only download clean speech files with good quality
-    # download_clean_speech_files(clean_download_dir)
+    #download_clean_speech_files(clean_download_dir)
     download_noise_files(dirty_download_dir)
+    pre_process_files.pre_process(clean_download_dir, dirty_download_dir, "/Volumes/yes/clean_speech_dataset_2")
 
     # Process downloaded files

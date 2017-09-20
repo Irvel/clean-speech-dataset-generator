@@ -10,12 +10,12 @@ import internetarchive
 import math
 import os
 
+import download_session
 import logging_setup
 
 logger = logging_setup.setup_logger("InternetArchive Module")
 
 NUM_FILES = 10
-NUM_PROCESSES = 8
 DIRTY_CATEGORIES = ["music", "instrumental", "78rpm", "ambient", "noise", "drone"]
 """These weights determine how many files of each category we're going to get.
 They are based on empirically determined "importance" of each category.
@@ -38,7 +38,7 @@ def fetch_items_in_query(search_query, num_items):
     for item in internetarchive.search_items(query=search_query):
         if len(items) < num_items:
             item_id = item["identifier"]
-            item = internetarchive.get_item(item_id)
+            item = internetarchive.get_item(item_id, http_adapter_kwargs=download_session.get_http_parameters())
             if item:
                 logger.info(f"Fetched item \"{item_id}\"")
                 items.append(item)
@@ -61,11 +61,15 @@ def fetch_total_n_items(num_items, uniform_distribution=False):
         categories_weights = [1/len(DIRTY_CATEGORIES) for x in range(len(DIRTY_CATEGORIES))]
 
     how_many_of_each_cat = [math.ceil(w * num_items) for w in categories_weights]
+    logger.info("  ".join([f"{cat}:{quant}" for cat, quant in zip(DIRTY_CATEGORIES, how_many_of_each_cat)]))
 
     total_items = []
     for amount, category in zip(how_many_of_each_cat, DIRTY_CATEGORIES):
         query = make_category_query(category)
-        total_items.extend(fetch_items_in_query(query, amount))
+        try:
+            total_items.extend(fetch_items_in_query(query, amount))
+        except Exception as e:
+            logger.error(f"Failed to fetch info for \"{query}\" from internetarchive")
 
     return total_items
 
@@ -83,7 +87,7 @@ def download_n_files(destination_dir, num_files=NUM_FILES):
                     # We only want to download one file per item so if there are multiple files
                     # with a valid extension in an item, we'll only download the first file.
                     file_name = file["name"]
-                    file_size = file["size"]
+                    file_size = int(file["size"])
                     break
             if file_name:
                 break
@@ -93,7 +97,7 @@ def download_n_files(destination_dir, num_files=NUM_FILES):
                 logger.info(f"Trying to download \"{file_name}\" from internetarchive...")
                 item.download(glob_pattern=file_name, no_directory=True, ignore_existing=True,
                               destdir=destination_dir, retries=10, silent=True)
-                total_downloaded_size += int(file_size)
+                total_downloaded_size += file_size
             except Exception as e:
                 logger.error(f"Failed to download file \"{file_name}\" internetarchive")
                 logger.error(e)

@@ -8,7 +8,6 @@ book metadata. It then stores the information of each book in book.Book objects.
 from bs4 import BeautifulSoup
 from multiprocessing import Pool
 
-
 import json
 import logging
 import random
@@ -23,7 +22,7 @@ import logging_setup
 logger = logging_setup.setup_logger("LibriVox Scraper")
 
 
-NUM_PROCESSES = 6  # Number of processes to use for downloading
+NUM_PROCESSES = 1  # Number of processes to use for downloading
 MAX_KNOWN_PAGE = 445  # The last know page from the book catalog
 
 MAGIC_HEADERS = {"Referer": "https://librivox.org/search",
@@ -120,7 +119,7 @@ def fetch_titles_from_page(page_number, get_books=True) -> ([Book], bool):
                 else:
                     # Books with various authors don't have an author url so this might be fine
                     logger.warn(f"Failed to scrape the author url for book \"{book.url}\" "
-                                 f"in catalog page #{page_number}")
+                                f"in catalog page #{page_number}")
                 book.download_url = catalog_result.find(class_="download-btn").a.attrs["href"]
                 book.size = catalog_result.find(class_="download-btn").span.text.strip()
                 books.append(book)
@@ -167,14 +166,22 @@ def fetch_all_books(start_page=1, end_page=MAX_KNOWN_PAGE, need_update_page=Fals
             logger.debug(f"Found new catalog page #{end_page}")
 
     logger.info(f"Fetching LibriVox's book catalog from pages #{start_page} till #{end_page}...")
+
+    all_books = []
+    """
+    # Commenting out multiprocess code for now as it crashes in Python 3.6.2 with the error:
+    # "__NSPlaceholderDate initialize] may have been in progress in another thread when fork() was called."
     fetched_titles = []
     with Pool(NUM_PROCESSES) as pool:
         fetched_titles = pool.map(fetch_titles_from_page, [n for n in range(start_page, end_page)])
-
-    all_books = []
     for result in fetched_titles:
         if result and result[1]:
             all_books.extend(result[0])
+    """
+    for page_num in range(start_page, end_page):
+        catalog_page, could_fetch = fetch_titles_from_page(page_num)
+        if could_fetch and catalog_page:
+            all_books.extend(catalog_page)
 
     return all_books
 
@@ -214,7 +221,13 @@ def fetch_all_chapters(book) -> [Chapter]:
     """Fetch metadata for every chapter in the book."""
     logger.debug(f"Downloading info for chapters in book: \"{book.title[:70]}\"...")
     session = download_session.make_session()
-    book_page = session.get(book.url, headers=_get_scrape_headers(), timeout=10)
+    try:
+        book_page = session.get(book.url, headers=_get_scrape_headers(), timeout=70)
+    except download_session.get_download_exceptions() as e:
+        logger.error(f"Scraping timed out to download chapters from book \"{book.url}\"")
+        logger.error(e)
+        return []
+
     if book_page.status_code != 200:
         logger.warn(f"Failed to download chapters information for book \"{book.url}\"")
         return []
@@ -241,7 +254,7 @@ def fetch_all_chapters(book) -> [Chapter]:
             chapter.title = row.find("a", class_="chapter-name").text
             chapter.download_url = row.find("a", class_="chapter-name").attrs["href"]
             row_elements = row.find_all("td")
-            if not row_elements:
+            if not row_elements or not row_elements[0] or not row_elements[0].a:
                 logger.error(f"Scraping failed for chapter metadata of book \"{book.url}\"")
                 break
 
@@ -251,16 +264,27 @@ def fetch_all_chapters(book) -> [Chapter]:
                 if row_elements[2].a:
                     chapter.author_url = row_elements[2].a.attrs["href"]
 
-                chapter.source_text = row_elements[3].text.strip()
-                if row_elements[3].a:
-                    chapter.source_text_url = row_elements[3].a.attrs["href"]
+                if len(row_elements) > 3:
+                    chapter.source_text = row_elements[3].text.strip()
+                    if row_elements[3].a:
+                        chapter.source_text_url = row_elements[3].a.attrs["href"]
 
-                chapter.reader_name = row_elements[4].text.strip()
-                if row_elements[4].a:
-                    chapter.reader_url = row_elements[4].a.attrs["href"]
+                if len(row_elements) > 4:
+                    chapter.reader_name = row_elements[4].text.strip()
+                    if row_elements[4].a:
+                        chapter.reader_url = row_elements[4].a.attrs["href"]
 
-                chapter.duration = row_elements[5].text.strip()
-                chapter.language_code = row_elements[6].text.strip()
+                if len(row_elements) > 5:
+                    chapter.duration = row_elements[5].text.strip()
+
+                if len(row_elements) > 6:
+                    chapter.language_code = row_elements[6].text.strip()
+                    # If no language_code was found, we fallback to use the book's language
+                    # This is not perfect as the book's language can be "multilingual" and chapters
+                    # are supposed to be recorded in only one language
+                if len(row_elements) < 6:
+                    logger.warn(f"Found an unexpected number of columns in the chapter row \"{chapter.title}\"")
+
                 chapters.append(chapter)
 
             else:
@@ -272,25 +296,25 @@ def fetch_all_chapters(book) -> [Chapter]:
             chapter.title = row.find("a", class_="chapter-name").text
             chapter.download_url = row.find("a", class_="chapter-name").attrs["href"]
             row_elements = row.find_all("td")
-            if not row_elements:
+            if not row_elements or not row_elements[0] or not row_elements[0].a:
                 logger.error(f"Scraping failed for chapter metadata of book \"{book.url}\"")
                 break
 
             chapter.number = int(row_elements[0].text.replace(row_elements[0].a.text, "").strip())
-
             if len(row_elements) > 2:
                 chapter.reader_name = row_elements[2].text.strip()
                 # Chapters read by a group of people don't have a link to the reader's profile
                 if row_elements[2].a:
                     chapter.reader_url = row_elements[2].a.attrs["href"]
 
-                chapter.duration = row_elements[3].text.strip()
-                chapter.language = book.language
+                if len(row_elements) > 3:
+                    chapter.duration = row_elements[3].text.strip()
+                # The chapter's language will be set to the book's language via the chapter's init
                 chapter.author = book.author
                 chapters.append(chapter)
 
             else:
-                logger.error(f"Scraping failed for chapter metadata of book \"{book.url}\"")
+                logger.error(f"Scraping failed for metadata of chapter \"{chapter.title}\"")
     else:
         logger.error(f"Found an unknown number ({num_row_elements}) of chapter_rows in "
                      f"the book page of \"{book.url}\"")
@@ -301,15 +325,17 @@ def fetch_all_chapters(book) -> [Chapter]:
 
 def fetch_all_books_chapters(books):
     """Fetches metadata for all chapters in the received books."""
+    """
+    # Commenting out multiprocess code for now as it crashes in Python 3.6.2 with the error:
+    # "__NSPlaceholderDate initialize] may have been in progress in another thread when fork() was called."
     with Pool(NUM_PROCESSES) as pool:
         lists_of_chapters = pool.map(fetch_all_chapters, books)
 
     for booky, chapters in zip(books, lists_of_chapters):
         booky.chapters = chapters
-
-
-def download_book(target_book):
-    target_book.download()
+    """
+    for book_to_fetch in books:
+        book_to_fetch.chapters = fetch_all_chapters(book_to_fetch)
 
 
 def download_chapter(target_chapter):
@@ -327,9 +353,5 @@ if __name__ == '__main__':
 
     fetch_all_books_chapters(books)
 
-    with Pool(NUM_PROCESSES) as pool:
-        _ = pool.map(download_book, books)
-
-
-    # print(books[0] or "")
-    # [print(b) for b in books]
+    for book_to_download in books:
+        book_to_download.download()
