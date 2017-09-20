@@ -16,16 +16,17 @@ LANGUAGE_TO_CODE = {"english": "en", "spanish": "es", "brazilian portuguese": "p
                     "chinese": "zh", "dutch": "nl", "esperanto": "eo", "filipino": "tg", "german": "de",
                     "japanese": "jp", "malay": "ms", "polish": "pl", "acehnese": "ace", "balinese": "ban",
                     "buginese": "bug", "bulgarian": "bg", "czech": "cs", "faroese": "fo", "western frisian": "fy",
-                    "greek": "el", "hebrew": "he", "indonesian": "id", "javanese": "jv", "latvian": "lt",
-                    "luxembourgish": "lb", "minangkabau": "min", "nynorsk": "nn", "occitan": "oc",
-                    "occitan (languedocien)": "oc", "occitan languedocien": "oc", "languedocien": "oc", "oriya": "or",
-                    "pampango": "pam", "slovak": "sk", "swedish": "sv", "ancient greek": "el",
+                    "greek": "el", "hebrew": "he", "indonesian": "id", "javanese": "jv", "latvian": "lv",
+                    "latvian (latvia)": "lv", "luxembourgish": "lb", "minangkabau": "min", "nynorsk": "nn",
+                    "occitan": "oc", "occitan (languedocien)": "oc", "occitan languedocien": "oc", "languedocien": "oc",
+                    "oriya": "or", "pampango": "pam", "slovak": "sk", "swedish": "sv", "ancient greek": "el",
                     "cantonese chinese": "zh", "albanian": "sq", "aragonese": "an", "armenian": "hy", "igbo": "ig",
                     "icelandic": "is", "ido": "io", "nuosu": "ii", "sichuan yi": "ii", "arabic": "ar",
                     "cebuano": "ceb", "bisaya": "ceb", "church slavonic": "cu", "slavonic": "cu",
                     "old bulgarian": "cu", "church slavic": "cu", "old slavonic": "cu", "old church slavonic": "cu",
                     "chuvash": "cv", "cornish": "kw", "croatian": "hr", "luo": "luo", "dholuo": "luo",
-                    "galician": "gl", "irish": "ga", "tagalog": "tl", "wikang tagalog": "tl", "yiddish": "yi"}
+                    "galician": "gl", "irish": "ga", "tagalog": "tl", "wikang tagalog": "tl", "yiddish": "yi",
+                    "multilingual": "multi", "maori": "mi", "danish": "da", "romanian": "ro"}
 
 CODE_TO_LANGUAGE = {language: code for code, language in LANGUAGE_TO_CODE.items()}
 
@@ -77,7 +78,10 @@ class AudioBookFile:
         self._download_url = new_url
 
         if not self.download_filename:
-            self.download_filename = new_url.split("/")[-1]
+            lang_code = ""
+            if self.language_code:
+                lang_code = self.language_code
+            self.download_filename = lang_code + "_" + new_url.split("/")[-1]
 
     @property
     def download_dir(self) -> str:
@@ -146,7 +150,6 @@ class AudioBookFile:
         """Get a human readable representation of the size in bytes."""
         return fmt_size_bytes(self._size)
 
-
     @size.setter
     def size(self, new_size):
         """Takes filesize in either text with units or bytes in an integer."""
@@ -182,7 +185,7 @@ class AudioBookFile:
                 try:
                     self._size = int(float(new_size) * multiplier)
                 except Exception as e:
-                    logger.error(f"Failed to set a size from {new_size}")
+                    logger.error(f"Failed to set a size from \"{new_size}\"")
                     logger.error(e)
 
         elif type(new_size) is int:
@@ -192,7 +195,7 @@ class AudioBookFile:
             raise Exception("Wrong size type provided ({type(new_size)})")
 
         if not self._size:
-            logger.warn(f"Failed to set a size from {new_size}")
+            logger.warn(f"Failed to set a size from \"{new_size}\"")
 
     @property
     def is_downloaded(self) -> bool:
@@ -260,6 +263,9 @@ class Chapter(AudioBookFile):
         if book_reference and book_reference.download_dir:
             self.download_dir = book_reference.download_dir
 
+        if book_reference.language_code and not self.language_code:
+            self.language_code = book_reference.language_code
+
     def download(self, overwrite=False):
         """Download the chapter from a URL to storage.
 
@@ -282,7 +288,7 @@ class Chapter(AudioBookFile):
         if not self.is_downloaded or overwrite:
             session = download_session.make_session()
             try:
-                download_request = session.get(self.download_url, stream=True, timeout=30)
+                download_request = session.get(self.download_url, stream=True, timeout=120)
                 if download_request.status_code == 200:
                     # Maybe we should assert 'Content-Type': 'audio/mpeg' here?
                     if not self.size:
@@ -292,7 +298,7 @@ class Chapter(AudioBookFile):
                         logger.info(f"Downloading {self.download_filename} to \"{self.download_dir}\"...")
                         shutil.copyfileobj(download_request.raw, local_file)
 
-            except download_session.get_download_exceptions() as e:
+            except Exception as e:
                 logger.error(f"Failed to download \"{self.download_filename}\" from \"{self.download_url}\"")
                 logger.error(e)
                 self.delete_file()
